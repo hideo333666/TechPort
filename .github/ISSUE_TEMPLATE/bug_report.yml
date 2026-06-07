@@ -1,0 +1,53 @@
+name: バグ報告
+description: 動作不良や仕様と乖離した挙動を報告する
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 何が起きているか 1〜2 行で
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 再現手順
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する挙動
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の挙動
+    validations:
+      required: true
+  - type: input
+    id: related_req
+    attributes:
+      label: 関連要件 (FR-XX / NFR-XX)
+      description: docs/requirements.md の要件番号があれば記載
+      placeholder: "例: FR-04, NFR-06"
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境 (任意)
+      placeholder: |
+        - OS:
+        - Node:
+        - Next.js:
+  - type: textarea
+    id: logs
+    attributes:
+      label: ログ / スクリーンショット (任意)
+      render: shell
