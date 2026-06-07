@@ -1,0 +1,32 @@
+// TechPort MVP schema (DR-01 / DR-02 / DR-03 / DR-04)
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Feed {
+  id        Int      @id @default(autoincrement())
+  name      String
+  rssUrl    String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Article {
+  id          Int      @id @default(autoincrement())
+  title       String
+  url         String   @unique
+  source      String
+  publishedAt DateTime
+  tags        String?
+  isRead      Boolean  @default(false)
+  isSaved     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([publishedAt(sort: Desc)])
+  @@index([isSaved])
+}

@@ -1,168 +1,66 @@
-<!-- claude-setup:base -->
-# プロジェクトルール (base)
+# TechPort — Claude Code 向けプロジェクトガイド
 
-このファイルは [claude-setup](https://github.com/hideo333666/claude-setup) によって
-インストールされます。`base` セクションは全プロジェクト共通で適用されます。
-言語固有のセクションは `install.sh --lang <name>` によって下に追記されます。
+個人用のローカル限定 IT ニュース集約ポータル。複数の RSS/Atom フィード (Qiita / Zenn / ITmedia / @IT / はてなブログ等) を `node-cron` で定期収集し、Next.js の画面で一覧・既読管理する。
 
-## コミュニケーション
+要件定義: [`docs/requirements.md`](docs/requirements.md) (ISO/IEC/IEEE 29148 準拠) — MVP スコープは 10 章を参照。
 
-- ユーザーの言語に合わせる (英語 / 日本語)。
-- 簡潔に。デフォルトは短い回答にし、求められたときだけ詳しく説明する。
-- 重要度の高い変更を提案するときは、実装前にトレードオフを 1 文で示す。
+## スタック
 
-## コード
+- Next.js 16 (App Router, Turbopack)
+- React 19
+- Prisma 6 + SQLite (`prisma/dev.db`)
+- `rss-parser` (RSS/Atom 取得) / `node-cron` (定期実行) / `zod` (入力検証)
+- Tailwind CSS 4
 
-- 新規ファイルを作る前に、まず既存ファイルの編集で済まないか検討する。
-- 現在のタスクに不要な抽象化・ヘルパー・フィーチャーフラグを導入しない。
-- コードが何をしているか繰り返すだけのコメントは書かない。自明でない
-  「なぜ」(不変条件・回避策・隠れた制約) のときだけコメントを書く。
-- 起こり得ないケースのエラーハンドリングを足さない。検証は信頼境界
-  (ユーザー入力・外部 API) でのみ行う。
-- コードを消すときは実際に消す。「removed: ...」のようなコメントや
-  コメントアウトされたブロックを残さない。
+## 開発コマンド
 
-## ツール
+| コマンド | 用途 |
+| --- | --- |
+| `npm run dev` | 開発サーバ起動 (127.0.0.1:3000)。`instrumentation.ts` 経由で `startScheduler` が走り、`COLLECT_CRON` の間隔で `collectAll` を実行 |
+| `npm run build` | 本番ビルド |
+| `npm run start` | 本番モード起動 (127.0.0.1:3000) |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint |
+| `npm run db:migrate` | `prisma migrate dev` |
+| `npm run db:generate` | Prisma Client 再生成 |
 
-- `make` / `npm run` / `just` など、プロジェクト固有のスクリプトが
-  あればアドホックなコマンドより優先する。
-- ユーザーから明示的に頼まれない限り、commit hook をスキップしない
-  (`--no-verify` を使わない)。
-- 破壊的な git 操作 (`reset --hard` / `push --force` / `branch -D` 等)
-  を、明示的な確認なしに実行しない。
+## ディレクトリ構成
 
-## シークレット
+- `src/app/` — App Router
+  - `page.tsx` 記事一覧 (FR-06)
+  - `feeds/page.tsx` フィード管理 (FR-03)
+  - `saved/page.tsx` あとで読む (FR-11)
+  - `api/feeds/route.ts` フィード登録/一覧 (FR-01)
+  - `api/articles/[id]/route.ts` 既読・save 状態の PATCH (FR-10/FR-11)
+  - `api/collect/route.ts` 手動収集トリガー (FR-04)
+- `src/server/` — サーバ専用ロジック
+  - `collector.ts` バッチ本体 (フィードごとに 500ms 間隔、重複は URL UNIQUE でスキップ、例外で全体停止しない)
+  - `rss.ts` `rss-parser` ラッパ (15 秒タイムアウト)
+  - `scheduler.ts` `node-cron` 起動
+- `src/components/` — Server/Client コンポーネント
+- `src/lib/` — `prisma.ts` シングルトン、`logger.ts` 構造化ログ (ISO8601, JSON)
+- `prisma/` — `schema.prisma` と `migrations/`
 
-- シークレット・トークン・認証情報は絶対にコミットしない。
-  `.env*` / `*credentials*` / `*secret*` にマッチするファイルは
-  ステージング前に確認する。
+## 設計方針
 
+- **MVP スコープ** (実装済): FR-01, FR-03, FR-04, FR-05, FR-06, FR-09, FR-10, FR-11
+- **Phase 2** (未着手): FR-02 フィード削除/無効化、FR-07 キーワード検索、FR-08 タグフィルタ
+- **将来枠** (要件定義 9 章): LLM 要約、通知、モバイル対応、マルチユーザ等
+- 認証は **意図的に未実装** (NFR-04 ローカル限定 / NFR-05)。外部公開する場合は要再設計。
+- フィード追加でソース修正不要 (NFR-08)。RSS 取得ロジックとフィード定義は分離 (NFR-09)。
 
-<!-- claude-setup:lang:nextjs -->
-## React
+## 環境変数 (`.env`)
 
-### 規約
-- 関数コンポーネント + Hooks のみ。クラスコンポーネントや旧来の
-  ライフサイクルメソッドを新規に持ち込まない。
-- コンポーネントは小さく純粋に保つ。デフォルトでグローバルストアに
-  頼らず、まずは state のリフトアップで考える。
-- コンポーネント / スタイル / テストは同じ場所に置く。プロジェクトが
-  別レイアウトを強制している場合はそれに従う。
-- 既にプロジェクトで使われている状態管理ライブラリ (Zustand / Redux
-  Toolkit / Jotai / TanStack Query 等) を使う。新しいものを足さない。
-- `useEffect` よりコンポジションを優先する。`useEffect` は本物の副作用
-  のみに使い、props から state を派生させる用途には使わない。
-- Hooks のルール (安定した識別子・条件分岐内で呼ばない・依存配列を
-  網羅) を守る。
+| キー | 必須 | 既定値 | 用途 |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | 必須 | `file:./prisma/dev.db` | SQLite パス |
+| `COLLECT_CRON` | 任意 | `*/30 * * * *` | 収集スケジュール (OR-01) |
+| `LOG_FILE` | 任意 | 未設定 (stdout のみ) | ログ出力先 (OR-02) |
+| `NODE_ENV` | 任意 | `development` | Next.js / Prisma の挙動 |
 
-### テスト (React)
-- React Testing Library + Vitest または Jest を使う。Enzyme は新規に
-  導入しない。
-- `data-testid` ではなく、role / label / text でクエリする。
-- コンポーネントツリー全体のスナップショットを取らない。挙動を
-  アサートする。
+## 注意事項
 
-## Next.js
-
-### ディレクトリ構成
-- App Router を新規採用する場合は以下を基準にする (Pages Router 既存
-  プロジェクトではこれを強制せず既存構成に従う)。
-
-  ```
-  .
-  ├── src/                       # 任意。採用する場合は app/ も src/ 配下に置く
-  │   ├── app/                   # App Router のルートツリー
-  │   │   ├── layout.tsx         # ルートレイアウト (必須)
-  │   │   ├── page.tsx           # ルートページ
-  │   │   ├── loading.tsx        # Suspense フォールバック (任意)
-  │   │   ├── error.tsx          # エラーバウンダリ (任意)
-  │   │   ├── not-found.tsx      # 404 (任意)
-  │   │   ├── globals.css        # グローバルスタイル
-  │   │   ├── (marketing)/       # Route Group: URL に含めず構造のみ分離
-  │   │   ├── (app)/             # 認証後セクションなど
-  │   │   ├── api/               # Route Handler (route.ts)
-  │   │   └── _components/       # Private Folder: ルーティング対象外
-  │   ├── components/            # 横断的に再利用する UI
-  │   │   ├── ui/                # primitives (Button, Input, ...)
-  │   │   └── <feature>/         # 機能別ドメイン部品
-  │   ├── features/              # 機能単位のドメインロジック (任意)
-  │   │   └── <feature>/{components,hooks,api,types}.ts
-  │   ├── lib/                   # フレームワーク非依存の純粋ロジック
-  │   ├── server/                # サーバ専用ユーティリティ ("server-only")
-  │   ├── hooks/                 # 汎用カスタムフック
-  │   ├── styles/                # Tailwind 設定や追加 CSS
-  │   ├── types/                 # 共有型定義
-  │   └── middleware.ts          # ルートはここ (src/ 採用時)
-  ├── public/                    # 静的アセット (画像 / fonts / robots.txt)
-  ├── tests/ または __tests__/    # E2E や統合テスト置き場
-  ├── next.config.ts
-  ├── tsconfig.json              # paths に "@/*": ["./src/*"] を設定
-  ├── package.json
-  └── .env.local                 # ローカル環境変数 (コミットしない)
-  ```
-
-- ルーティング規約:
-  - `(group)/` は URL に出さない論理グループ化。レイアウト分割に使う。
-  - `_folder/` は Private Folder。ルーティング対象から除外され、
-    `app/` 配下にコンポーネントや fetcher を同居させたいときに使う。
-  - 動的セグメントは `[id]` / catch-all は `[...slug]` / optional は
-    `[[...slug]]`。
-  - 並列ルートは `@slot`、インターセプトルートは `(.)` / `(..)`。
-- コロケーション原則: ページ固有のコンポーネント・テスト・スタイルは
-  そのルートセグメント直下に置く。横断的に使うものだけ
-  `components/` / `lib/` に昇格させる。
-- `src/` を採用するか否かはプロジェクト方針に従う。混在させない。
-- `tsconfig.json` の `paths` は `@/*` を 1 種類だけ定義する。
-  深い相対パス (`../../../`) を避けるための最低限の alias に留め、
-  乱立させない。
-
-### 規約
-- ルーター方式を自動判定する。`app/` ディレクトリがあれば App Router、
-  `pages/` があれば Pages Router。既存のものに合わせ、明示的な依頼が
-  ない限りルーターを移行しない。
-- App Router では Server Components がデフォルト。`"use client"` は
-  本当にクライアント機能 (state / 副作用 / ブラウザ API /
-  イベントハンドラ) が必要なときだけ付ける。
-- データ取得は消費する場所の近くに置く (Server Component の `fetch` /
-  Route Handler / Server Action)。サーバ取得のためだけにクライアント
-  側のデータレイヤを持ち込まない。
-- ファイルベースルーティングの名前はフレームワーク契約の一部。
-  `page.tsx` / `layout.tsx` / `loading.tsx` / `error.tsx` / `route.ts` /
-  `middleware.ts` をリネームしない。
-- 内部ナビゲーションと画像は素の `<a>` / `<img>` ではなく `next/link` /
-  `next/image` を使う。
-- env 変数の分離を尊重する。`NEXT_PUBLIC_*` のみブラウザに渡り、
-  それ以外はサーバ専用。Client Component からサーバシークレットを
-  読まない。
-- App Router のキャッシュ指定 (`fetch` のキャッシュオプション /
-  `revalidate` / `dynamic`) は意図を持って使う。キャッシュ由来の
-  不具合を黙らせるために `force-dynamic` を振りまかず、根本原因を
-  特定する。
-
-### ツール
-- `next dev` / `next build` / `next start` はプロジェクトの npm
-  スクリプト経由で実行する。
-- 完了とする前に `next lint` (またはプロジェクトの lint スクリプト) と
-  `npx tsc --noEmit` を実行する。
-
-### テスト (Next.js)
-- 単体 / コンポーネント: Vitest または Jest + React Testing Library。
-- E2E: 既に Playwright があるならそれを使う。隣に Cypress を追加しない。
-- Server Component で `fetch` をモックしない。実テストバックエンドか、
-  本当に必要なときだけ MSW を使う。
-
-### パフォーマンス参考資料
-- `.claude/skills/react-best-practices/` に Vercel Engineering の
-  React / Next.js パフォーマンス最適化ルール集 (70 ルール / 8 カテゴリ /
-  MIT ライセンス) が同梱されています (`/react-best-practices` で呼び出し
-  可)。バンドルサイズ削減・データウォーターフォール解消・Server Component
-  最適化・再レンダリング抑制などの具体的なレシピが必要なときに
-  `SKILL.md` から該当カテゴリの `rules/*.md` を参照してください。
-- 散文・コード内コメント・frontmatter の翻訳対象値はすべて日本語化済み
-  (コード自体・API 名・kebab-case ルール ID は原文維持)。翻訳ベース
-  commit と上流追従手順は
-  `skills/react-best-practices/_translation_notice.md` を、訳語統一表は
-  `skills/react-best-practices/_translation_glossary.md` を参照してください。
-- `AGENTS.md` は上流の build スクリプトで `rules/*.md` から自動生成
-  されるドキュメントのため、英語のまま残しています (翻訳しても
-  上流の再生成で上書きされる)。
+- 外部公開不可 (NFR-04)。`next dev/start` は `-H 127.0.0.1` 固定。
+- 外部リンクには `rel="noopener noreferrer"` 付与必須 (NFR-07)。`ArticleRow.tsx` 参照。
+- バックアップは `cp prisma/dev.db prisma/dev.db.bak` で十分 (OR-03)。
+- 収集失敗で全体クラッシュさせない方針 (FR-05) — `collector.ts` の try/catch を維持。
